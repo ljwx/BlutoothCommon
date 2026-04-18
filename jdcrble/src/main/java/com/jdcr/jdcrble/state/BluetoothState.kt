@@ -1,121 +1,101 @@
 package com.jdcr.jdcrble.state
 
-import android.Manifest
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
-import android.bluetooth.BluetoothGattService
 import android.bluetooth.le.ScanResult
-import com.jdcr.jdcrble.util.nameAndAddress
 
-sealed class BleAdapterState {
-    abstract val desc: String
+sealed class JdcrBleScanResult(desc: String) {
 
-    object Disable : BleAdapterState() {
-        override val desc = "蓝牙未开启"
-    }
-
-    object Idle : BleAdapterState() {
-        override val desc = "闲置状态"
-    }
-
-    data class ScanDenied(val versionName: String) : BleAdapterState() {
-        override val desc = "没有扫描权限,ovVersion:$versionName"
-    }
+    object IDLE : JdcrBleScanResult("闲置中")
 
     data class ScanningList(
         val results: List<ScanResult>,
         val timestamp: Long = System.currentTimeMillis()
-    ) : BleAdapterState() {
-        override val desc = "扫描中,数据集"
-    }
+    ) : JdcrBleScanResult("扫描中,多个结果")
 
     data class ScanningSingle(
         val result: ScanResult?,
         val timestamp: Long = System.currentTimeMillis()
-    ) : BleAdapterState() {
-        override val desc = "扫描中,单个数据"
-    }
+    ) : JdcrBleScanResult("扫描中,单个结果")
 
-    data class Finish(val success: Boolean, val reason: Int, val errorCode: Int? = null) :
-        BleAdapterState() {
+    object Finish : JdcrBleScanResult("扫描结束")
+
+    data class Failure(val reason: Int, val errorCode: Int? = null, val t: Throwable? = null) :
+        JdcrBleScanResult("扫描失败:$reason") {
+
         companion object {
-            const val REASON_MANUAL = 0
-            const val REASON_TIMEOUT = 1
-            const val REASON_ON_FAIL = 2
+            const val REASON_EXCEPTION = 5000
+            const val REASON_ON_FAIL = 5001
         }
 
-        override val desc = "扫描结束,成功:$success,$reason"
     }
+
 }
 
-sealed class BleDeviceState() {
+sealed class JdcrBleConnectState(
+    open val gatt: BluetoothGatt?,
+    val desc: String,
+    val stateStep: Int,
+) {
 
-    abstract val desc: String
-
-    object Idle : BleDeviceState() {
-        override val desc = "闲置未使用"
+    companion object {
+        const val INITIAL_STATUS = 0
     }
+
+    object Void : JdcrBleConnectState(null, "没有", INITIAL_STATUS)
 
     data class Connecting(
         val device: BluetoothDevice,
+        override val gatt: BluetoothGatt,
         val address: String = device.address,
         val timestamp: Long = System.currentTimeMillis(),
-    ) : BleDeviceState() {
-        override val desc = "连接中:" + device.nameAndAddress()
-    }
+    ) : JdcrBleConnectState(gatt, "连接中:$address", 1)
 
     data class Connected(
         val device: BluetoothDevice,
+        override val gatt: BluetoothGatt,
         val address: String = device.address,
         val timestamp: Long = System.currentTimeMillis()
-    ) : BleDeviceState() {
-        override val desc = "硬件连接成功:" + device.nameAndAddress()
-    }
+    ) : JdcrBleConnectState(gatt, "硬件连接成功$address", 2)
 
-    data class DiscoveringServices(
+    data class DiscoveredServices(
         val device: BluetoothDevice,
+        override val gatt: BluetoothGatt,
         val address: String = device.address,
         val timestamp: Long = System.currentTimeMillis()
-    ) : BleDeviceState() {
-        override val desc = "服务启动中:" + device.nameAndAddress()
-    }
+    ) : JdcrBleConnectState(gatt, "服务启动中$address", 3)
 
     data class ModifyMtu(
         val device: BluetoothDevice,
         val requestMut: Int,
+        override val gatt: BluetoothGatt,
         val address: String = device.address,
         val timestamp: Long = System.currentTimeMillis()
-    ) : BleDeviceState() {
-        override val desc = "修改mtu中:" + device.nameAndAddress() + ",mtu≈" + requestMut
-    }
+    ) : JdcrBleConnectState(gatt, "修改mtu中$address", 4)
 
     data class Ready(
         val device: BluetoothDevice,
-        val services: List<BluetoothGattService>,
+        override val gatt: BluetoothGatt,
         val address: String = device.address,
         val mtu: Int = 23,
         val timestamp: Long = System.currentTimeMillis()
-    ) : BleDeviceState() {
-        override val desc = "通信服务已可用:" + device.nameAndAddress() + ",mtu=" + mtu
-    }
+    ) : JdcrBleConnectState(gatt, "通信服务已可用$address", 5)
 
     data class Disconnecting(
         val device: BluetoothDevice,
+        override val gatt: BluetoothGatt,
         val address: String = device.address,
         val timestamp: Long = System.currentTimeMillis()
-    ) : BleDeviceState() {
-        override val desc = "断开连接中:" + device.nameAndAddress()
-    }
+    ) : JdcrBleConnectState(gatt, "断开连接中$address", -1)
 
     data class Disconnected(
         val device: BluetoothDevice,
-        val fromState: BleDeviceState = Idle,
+        override val gatt: BluetoothGatt?,
+        val fromState: JdcrBleConnectState? = Void,
         val status: Int,
         val address: String = device.address,
         val timestamp: Long = System.currentTimeMillis(),
-    ) : BleDeviceState() {
-        override val desc =
-            "设备已断开:" + device.nameAndAddress() + ",status=" + status + ",fromState=" + fromState.javaClass.simpleName
+    ) : JdcrBleConnectState(gatt, "设备已断开$address", -2) {
 
         fun isExceptionDisconnect(): Boolean {
             return status != BluetoothGatt.GATT_SUCCESS
@@ -125,11 +105,11 @@ sealed class BleDeviceState() {
 
 }
 
-sealed class BleAvailableState() {
-    object LocationPermissionDined : BleAvailableState()
-    object LocationDisable : BleAvailableState()
-    object BlePermissionDine : BleAvailableState()
-    object BleDisable : BleAvailableState()
-    object BleNoSupport : BleAvailableState()
-    object Ready : BleAvailableState()
+sealed class JdcrBleAvailableState() {
+    object LocationPermissionDine : JdcrBleAvailableState()
+    object LocationDisable : JdcrBleAvailableState()
+    object BlePermissionDine : JdcrBleAvailableState()
+    object BleDisable : JdcrBleAvailableState()
+    object BleNoSupport : JdcrBleAvailableState()
+    object Ready : JdcrBleAvailableState()
 }

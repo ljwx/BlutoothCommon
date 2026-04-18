@@ -41,4 +41,6 @@ dependencies {
     val coroutinesVersion = "1.6.4"
     api("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
     api("org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutinesVersion")
+
+    api("com.github.ljwx:jdcrlog:1.2.3")
 }
