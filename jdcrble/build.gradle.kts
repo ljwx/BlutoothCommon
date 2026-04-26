@@ -43,4 +43,5 @@ dependencies {
     api("org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutinesVersion")
 
     api("com.github.ljwx:jdcrlog:1.2.3")
+    api("com.github.ljwx:jdcrpermissions:0.2.0-SNAPSHOT")
 }
